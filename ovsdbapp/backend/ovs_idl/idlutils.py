@@ -117,6 +117,7 @@ def get_schema_helper(connection, schema_name):
     err, strm = stream.Stream.open_block(
         stream.Stream.open(connection))
     if err:
+        #有错误，扔异常
         raise Exception("Could not connect to %s" % connection)
     rpc = jsonrpc.Connection(strm)
     req = jsonrpc.Message.create_request('get_schema', [schema_name])

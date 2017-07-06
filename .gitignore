@@ -96,3 +96,7 @@ ENV/
 *~
 .*.swp
 .*sw?
+#project and link for dev
+.project
+.pydevproject
+ovs
