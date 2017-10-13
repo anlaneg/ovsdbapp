@@ -44,7 +44,7 @@ class Transaction(api.Transaction):
 
         returns The command passed as a convenience
         """
-
+        #仅实现将command加入到commands缓存中
         self.commands.append(command)
         return command
 
@@ -78,24 +78,31 @@ class Transaction(api.Transaction):
             attempts += 1
             # TODO(twilson) Make sure we don't loop longer than vsctl_timeout
             txn = idl.Transaction(self.api.idl)
+            #调用pre_commit函数
             self.pre_commit(txn)
+            #遍历所有缓存的命令，调用命令对应的run_idl函数
             for i, command in enumerate(self.commands):
                 LOG.debug("Running txn command(idx=%(idx)s): %(cmd)s",
                           {'idx': i, 'cmd': command})
                 try:
                     command.run_idl(txn)
                 except Exception:
+                    #出错，事务中止
                     txn.abort()
                     if self.check_error:
                         raise
+            
             seqno = self.api.idl.change_seqno
+            #事务提交
             status = txn.commit_block()
             if status == txn.TRY_AGAIN:
+                #要求稍后重试
                 LOG.debug("OVSDB transaction returned TRY_AGAIN, retrying")
                 idlutils.wait_for_change(self.api.idl, self.time_remaining(),
                                          seqno)
                 continue
             elif status == txn.ERROR:
+                #事务提交出现error
                 msg = "OVSDB Error: %s" % txn.get_error()
                 if self.log_errors:
                     LOG.error(msg)
@@ -105,12 +112,14 @@ class Transaction(api.Transaction):
                 return
             elif status == txn.ABORTED:
                 LOG.debug("Transaction aborted")
-                return
+                return #为什么这种不需要扔异常出来？
             elif status == txn.UNCHANGED:
+                #数据库无变更
                 LOG.debug("Transaction caused no change")
             elif status == txn.SUCCESS:
                 self.post_commit(txn)
 
+            #返回成功执行的commands
             return [cmd.result for cmd in self.commands]
 
     def elapsed_time(self):

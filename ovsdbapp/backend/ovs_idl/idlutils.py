@@ -1,3 +1,4 @@
+# encoding:utf-8
 # Copyright (c) 2015 Red Hat, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -119,8 +120,10 @@ def get_schema_helper(connection, schema_name):
     if err:
         #有错误，扔异常
         raise Exception("Could not connect to %s" % connection)
+    #创建jsonrpc连接，请求命令'get_schema'
     rpc = jsonrpc.Connection(strm)
     req = jsonrpc.Message.create_request('get_schema', [schema_name])
+    #等待响应
     err, resp = rpc.transact_block(req)
     rpc.close()
     if err:
@@ -129,6 +132,7 @@ def get_schema_helper(connection, schema_name):
                                      'err': os.strerror(err)})
     elif resp.error:
         raise Exception(resp.error)
+    #封装返回的库描述信息（例如含哪些表，表结构是什么）
     return idl.SchemaHelper(None, resp.result)
 
 

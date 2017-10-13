@@ -94,6 +94,7 @@ class Connection(object):
             txn = self.txns.get_nowait()
             if txn is not None:
                 try:
+                    #记录成功执行的commands
                     txn.results.put(txn.do_commit())
                 except Exception as ex:
                     er = idlutils.ExceptionResult(ex=ex,

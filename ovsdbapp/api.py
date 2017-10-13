@@ -17,7 +17,7 @@ import contextlib
 
 import six
 
-
+#命令需要能被执行
 @six.add_metaclass(abc.ABCMeta)
 class Command(object):
     """An OVSDB command that can be executed in a transaction

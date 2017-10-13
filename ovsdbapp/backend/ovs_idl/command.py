@@ -43,6 +43,7 @@ class BaseCommand(api.Command):
         pass
 
     def __str__(self):
+        #将self的所有键及key转换为字符串
         command_info = self.__dict__
         return "%s(%s)" % (
             self.__class__.__name__,
