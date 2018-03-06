@@ -13,13 +13,24 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import mock
+
+from ovsdbapp import exceptions as exc
 from ovsdbapp.schema.open_vswitch import impl_idl
 from ovsdbapp.tests.functional import base
 from ovsdbapp.tests import utils
 
 
+# NOTE(twilson) functools.partial does not work for this
+def trpatch(*args, **kwargs):
+    def wrapped(fn):
+        return mock.patch.object(impl_idl.OvsVsctlTransaction,
+                                 *args, **kwargs)(fn)
+    return wrapped
+
+
 class TestOvsdbIdl(base.FunctionalTestCase):
-    schema = "Open_vSwitch"
+    schemas = ["Open_vSwitch"]
 
     def setUp(self):
         super(TestOvsdbIdl, self).setUp()
@@ -64,8 +75,8 @@ class TestOvsdbIdl(base.FunctionalTestCase):
     def _test_add_port(self):
         pname = utils.get_rand_device_name()
         with self.api.transaction(check_error=True) as txn:
-            txn.add(self.api.add_br(self.brname))
-            txn.add(self.api.add_port(self.brname, pname))
+            txn.extend([self.api.add_br(self.brname),
+                        self.api.add_port(self.brname, pname)])
         return pname
 
     def test_add_port(self):
@@ -89,3 +100,87 @@ class TestOvsdbIdl(base.FunctionalTestCase):
     def test_del_port_if_exists_false(self):
         cmd = self.api.del_port(utils.get_rand_device_name(), if_exists=False)
         self.assertRaises(RuntimeError, cmd.execute, check_error=True)
+
+    def test_connection_reconnect(self):
+        self.api.ovsdb_connection.stop()
+        existsCmd = self.api.br_exists(self.brname)
+        txn = self.api.create_transaction(check_error=True)
+        txn.add(existsCmd)
+        self.api.ovsdb_connection.queue_txn(txn)
+        self.api.ovsdb_connection.start()
+        result = txn.results.get(timeout=self.api.ovsdb_connection.timeout)
+        self.assertEqual(result, [False])
+
+    def test_connection_disconnect_timeout(self):
+        _is_running_mock = mock.PropertyMock(return_value=True)
+        connection = self.api.ovsdb_connection
+        type(connection)._is_running = _is_running_mock
+        self.addCleanup(delattr, type(connection), '_is_running')
+        self.assertFalse(connection.stop(1))
+
+    def test_br_external_id(self):
+        KEY = "foo"
+        VALUE = "bar"
+        self.api.add_br(self.brname).execute(check_error=True)
+        self.api.br_set_external_id(self.brname, KEY, VALUE).execute(
+            check_error=True)
+        external_id = self.api.br_get_external_id(self.brname, KEY).execute(
+            check_error=True)
+        self.assertEqual(VALUE, external_id)
+
+    def test_iface_external_id(self):
+        KEY = "foo"
+        VALUE = "bar"
+        self.api.add_br(self.brname).execute(check_error=True)
+        self.api.iface_set_external_id(self.brname, KEY, VALUE).execute(
+            check_error=True)
+        external_id = self.api.iface_get_external_id(self.brname, KEY).execute(
+            check_error=True)
+        self.assertEqual(VALUE, external_id)
+
+
+class ImplIdlTestCase(base.FunctionalTestCase):
+    schemas = ['Open_vSwitch']
+
+    def setUp(self):
+        super(ImplIdlTestCase, self).setUp()
+        self.api = impl_idl.OvsdbIdl(self.connection)
+        self.brname = utils.get_rand_device_name()
+        # Make sure exceptions pass through by calling do_post_commit directly
+        mock.patch.object(
+            impl_idl.OvsVsctlTransaction, "post_commit",
+            side_effect=impl_idl.OvsVsctlTransaction.do_post_commit,
+            autospec=True).start()
+
+    def _add_br(self):
+        # NOTE(twilson) we will be raising exceptions with add_br, so schedule
+        # cleanup before that.
+        cmd = self.api.del_br(self.brname)
+        self.addCleanup(cmd.execute)
+        with self.api.transaction(check_error=True) as tr:
+            tr.add(self.api.add_br(self.brname))
+        return tr
+
+    def _add_br_and_test(self):
+        self._add_br()
+        ofport = self.api.db_get("Interface", self.brname, "ofport").execute(
+            check_error=True)
+        self.assertTrue(int(ofport))
+        self.assertGreater(ofport, -1)
+
+    def test_post_commit_vswitchd_completed_no_failures(self):
+        self._add_br_and_test()
+
+    @trpatch("vswitchd_has_completed", return_value=True)
+    @trpatch("post_commit_failed_interfaces", return_value=["failed_if1"])
+    @trpatch("timeout_exceeded", return_value=False)
+    def test_post_commit_vswitchd_completed_failures(self, *args):
+        self.assertRaises(impl_idl.VswitchdInterfaceAddException,
+                          self._add_br)
+
+    @trpatch("vswitchd_has_completed", return_value=False)
+    def test_post_commit_vswitchd_incomplete_timeout(self, *args):
+        # Due to timing issues we may rarely hit the global timeout, which
+        # raises RuntimeError to match the vsctl implementation
+        self.api.ovsdb_connection.timeout = 1
+        self.assertRaises((exc.TimeoutException, RuntimeError), self._add_br)

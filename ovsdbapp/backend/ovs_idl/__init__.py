@@ -10,33 +10,59 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import logging
 import uuid
 
 from ovsdbapp.backend.ovs_idl import command as cmd
 from ovsdbapp.backend.ovs_idl import idlutils
+from ovsdbapp.backend.ovs_idl import transaction
+from ovsdbapp import exceptions
 
+LOG = logging.getLogger(__name__)
 _NO_DEFAULT = object()
 
 
-class RowView(object):
-    def __init__(self, row):
-        self._row = row
-
-    def __getattr__(self, column_name):
-        return getattr(self._row, column_name)
-
-    def __eq__(self, other):
-        # use other's == since it is likely to be a Row object
-        try:
-            return other == self._row
-        except NotImplemented:
-            return other._row == self._row
-
-    def __hash__(self):
-        return self._row.__hash__()
-
-
 class Backend(object):
+    lookup_table = {}
+    ovsdb_connection = None
+
+    def __init__(self, connection):
+        super(Backend, self).__init__()
+        self.start_connection(connection)
+
+    @classmethod
+    def start_connection(cls, connection):
+        try:
+            if cls.ovsdb_connection is None:
+                cls.ovsdb_connection = connection
+                cls.ovsdb_connection.start()
+        except Exception as e:
+            connection_exception = exceptions.OvsdbConnectionUnavailable(
+                db_schema=cls.schema, error=e)
+            LOG.exception(connection_exception)
+            raise connection_exception
+
+    @classmethod
+    def restart_connection(cls):
+        cls.ovsdb_connection.stop()
+        cls.ovsdb_connection.start()
+
+    @property
+    def idl(self):
+        return self.__class__.ovsdb_connection.idl
+
+    @property
+    def tables(self):
+        return self.idl.tables
+
+    _tables = tables
+
+    def create_transaction(self, check_error=False, log_errors=True, **kwargs):
+        return transaction.Transaction(
+            self, self.__class__.ovsdb_connection,
+            self.__class__.ovsdb_connection.timeout,
+            check_error, log_errors)
+
     def db_create(self, table, **col_values):
         return cmd.DbCreateCommand(self, table, **col_values)
 
@@ -58,8 +84,19 @@ class Backend(object):
     def db_list(self, table, records=None, columns=None, if_exists=False):
         return cmd.DbListCommand(self, table, records, columns, if_exists)
 
+    def db_list_rows(self, table, records=None, if_exists=False):
+        return cmd.DbListCommand(self, table, records, columns=None, row=True,
+                                 if_exists=if_exists)
+
     def db_find(self, table, *conditions, **kwargs):
         return cmd.DbFindCommand(self, table, *conditions, **kwargs)
+
+    def db_find_rows(self, table, *conditions, **kwargs):
+        return cmd.DbFindCommand(self, table, *conditions, row=True, **kwargs)
+
+    def db_remove(self, table, record, column, *values, **keyvalues):
+        return cmd.DbRemoveCommand(self, table, record, column,
+                                   *values, **keyvalues)
 
     def lookup(self, table, record, default=_NO_DEFAULT):
         try:
@@ -70,6 +107,9 @@ class Backend(object):
             raise
 
     def _lookup(self, table, record):
+        if record == "":
+            raise TypeError("Cannot look up record by empty string")
+
         t = self.tables[table]
         try:
             if isinstance(record, uuid.UUID):
@@ -97,7 +137,9 @@ class Backend(object):
         if rl.table is None:
             raise idlutils.RowNotFound(table=table, col='uuid', match=record)
         if rl.column is None:
-            return next(iter(t.rows.values()))
+            if t.max_rows == 1:
+                return next(iter(t.rows.values()))
+            raise idlutils.RowNotFound(table=table, col='uuid', match=record)
         row = idlutils.row_by_value(self, rl.table, rl.column, record)
         if rl.uuid_column:
             rows = getattr(row, rl.uuid_column)

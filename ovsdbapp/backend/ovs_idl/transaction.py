@@ -82,8 +82,8 @@ class Transaction(api.Transaction):
             self.pre_commit(txn)
             #遍历所有缓存的命令，调用命令对应的run_idl函数
             for i, command in enumerate(self.commands):
-                LOG.debug("Running txn command(idx=%(idx)s): %(cmd)s",
-                          {'idx': i, 'cmd': command})
+                LOG.debug("Running txn n=%(n)d command(idx=%(idx)s): %(cmd)s",
+                          {'idx': i, 'cmd': command, 'n': attempts})
                 try:
                     command.run_idl(txn)
                 except Exception:
@@ -91,15 +91,18 @@ class Transaction(api.Transaction):
                     txn.abort()
                     if self.check_error:
                         raise
-            
-            seqno = self.api.idl.change_seqno
             #事务提交
             status = txn.commit_block()
             if status == txn.TRY_AGAIN:
                 #要求稍后重试
                 LOG.debug("OVSDB transaction returned TRY_AGAIN, retrying")
-                idlutils.wait_for_change(self.api.idl, self.time_remaining(),
-                                         seqno)
+                # In the case that there is a reconnection after
+                # Connection.run() calls self.idl.run() but before do_commit()
+                # is called, commit_block() can loop w/o calling idl.run()
+                # which does the reconnect logic. It will then always return
+                # TRY_AGAIN until we time out and Connection.run() calls
+                # idl.run() again. So, call idl.run() here just in case.
+                self.api.idl.run()
                 continue
             elif status == txn.ERROR:
                 #事务提交出现error

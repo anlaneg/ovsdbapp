@@ -10,46 +10,37 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from __future__ import absolute_import
-
-import fixtures
-
 from ovsdbapp.schema.ovn_northbound import impl_idl
+from ovsdbapp.tests.functional.schema import fixtures
 
 
-class ImplIdlFixture(fixtures.Fixture):
-    api, create, delete = (None, None, None)
-    delete_args = {'if_exists': True}
-
-    def __init__(self, *args, **kwargs):
-        super(ImplIdlFixture, self).__init__()
-        self.args = args
-        self.kwargs = kwargs
-
-    def _setUp(self):
-        api = self.api(None)
-        create_fn = getattr(api, self.create)
-        delete_fn = getattr(api, self.delete)
-        self.obj = create_fn(*self.args, **self.kwargs).execute(
-            check_error=True)
-        self.addCleanup(delete_fn(self.obj.uuid,
-                        **self.delete_args).execute, check_error=True)
-
-
-class LogicalSwitchFixture(ImplIdlFixture):
+class LogicalSwitchFixture(fixtures.ImplIdlFixture):
     api = impl_idl.OvnNbApiIdlImpl
     create = 'ls_add'
     delete = 'ls_del'
 
 
-class DhcpOptionsFixture(ImplIdlFixture):
+class DhcpOptionsFixture(fixtures.ImplIdlFixture):
     api = impl_idl.OvnNbApiIdlImpl
     create = 'dhcp_options_add'
     delete = 'dhcp_options_del'
     delete_args = {}
 
 
-class LogicalRouterFixture(ImplIdlFixture):
+class LogicalRouterFixture(fixtures.ImplIdlFixture):
     api = impl_idl.OvnNbApiIdlImpl
     create = 'lr_add'
     delete = 'lr_del'
+
+
+class LoadBalancerFixture(fixtures.ImplIdlFixture):
+    api = impl_idl.OvnNbApiIdlImpl
+    create = 'lb_add'
+    delete = 'lb_del'
+
+
+class DnsFixture(fixtures.ImplIdlFixture):
+    api = impl_idl.OvnNbApiIdlImpl
+    create = 'dns_add'
+    delete = 'dns_del'
+    delete_args = {}

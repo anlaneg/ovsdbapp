@@ -44,7 +44,17 @@ class Transaction(object):
 
     @abc.abstractmethod
     def add(self, command):
-        """Append an OVSDB operation to the transaction"""
+        """Append an OVSDB operation to the transaction
+
+        Operation is returned back as a convenience.
+        """
+
+    def extend(self, commands):
+        """Add multiple OVSDB operations to the transaction
+
+        List of operations is returned back as a convenience.
+        """
+        return [self.add(command) for command in commands]
 
     def __enter__(self):
         return self
@@ -196,6 +206,14 @@ class API(object):
         """
 
     @abc.abstractmethod
+    def db_list_rows(self, table, record=None, if_exists=False):
+        """Create a command to return a list of OVSDB records
+
+        Identical to db_list, but returns a RowView list result
+        :returns: :class:`Command` with RowView list result
+        """
+
+    @abc.abstractmethod
     def db_find(self, table, *conditions, **kwargs):
         """Create a command to return find OVSDB records matching conditions
 
@@ -216,4 +234,36 @@ class API(object):
         :param columns:   Limit results to only columns, None means all columns
         :type columns:    list of column names or None
         :returns:         :class:`Command` with [{'column', value}, ...] result
+        """
+
+    @abc.abstractmethod
+    def db_find_rows(self, table, *conditions, **kwargs):
+        """Create a command to return OVSDB records matching conditions
+
+        Identical to db_find, but returns a list of RowView objects
+
+        :returns: :class:`Command` with RowView list result
+        """
+
+    @abc.abstractmethod
+    def db_remove(self, table, record, column, *values, **keyvalues):
+        """Create a command to delete fields or key-value pairs in a record
+
+        :param table:     The OVS table to query
+        :type table:      string
+        :param record:    The record id (name/uuid)
+        :type record:     string
+        :param column:    The column whose value should be deleted
+        :type column:     string
+        :param values:    In case of list columns, the values to be deleted
+                          from the list of values
+                          In case of dict columns, the keys to delete
+                          regardless of their value
+        :type value:      varies depending on column
+        :param keyvalues: For dict columns, the keys to delete when the key's
+                          value matches the argument value
+        :type keyvalues:  values vary depending on column
+        :param if_exists: Do not fail if the record does not exist
+        :type if_exists:  bool
+        :returns:         :class:`Command` with no result
         """

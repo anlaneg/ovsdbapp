@@ -74,22 +74,18 @@ class OvsVsctlTransaction(transaction.Transaction):
 
 
 class OvsdbIdl(ovs_idl.Backend, api.API):
-    def __init__(self, connection):
-        super(OvsdbIdl, self).__init__()
-        self.connection = connection
-        self.connection.start()
-        self.idl = self.connection.idl
+    schema = 'Open_vSwitch'
 
     @property
-    def _tables(self):
-        return self.idl.tables
+    def connection(self):
+        return self.ovsdb_connection
 
     @property
     def _ovs(self):
         return list(self._tables['Open_vSwitch'].rows.values())[0]
 
     def create_transaction(self, check_error=False, log_errors=True, **kwargs):
-        return OvsVsctlTransaction(self, self.connection,
+        return OvsVsctlTransaction(self, self.ovsdb_connection,
                                    check_error=check_error,
                                    log_errors=log_errors)
 
@@ -149,3 +145,9 @@ class OvsdbIdl(ovs_idl.Backend, api.API):
 
     def list_ifaces(self, bridge):
         return cmd.ListIfacesCommand(self, bridge)
+
+    def iface_get_external_id(self, name, field):
+        return cmd.IfaceGetExternalIdCommand(self, name, field)
+
+    def iface_set_external_id(self, name, field, value):
+        return cmd.IfaceSetExternalIdCommand(self, name, field, value)

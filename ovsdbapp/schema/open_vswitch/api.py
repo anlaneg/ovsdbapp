@@ -29,7 +29,7 @@ class API(api.API):
 
         :param connection_uri: target to which manager needs to be set
         :type connection_uri: string, see ovs-vsctl manpage for format
-        :returns:           :class:`Command` with no result
+        :returns:           :class:`Command` with RowView result
         """
 
     @abc.abstractmethod
@@ -61,7 +61,7 @@ class API(api.API):
         :type may_exist:        bool
         :param datapath_type:   The datapath_type of the bridge
         :type datapath_type:    string
-        :returns:               :class:`Command` with no result
+        :returns:               :class:`Command` with RowView result
         """
 
     @abc.abstractmethod
@@ -121,6 +121,19 @@ class API(api.API):
         """
 
     @abc.abstractmethod
+    def br_set_external_id(self, name, field, value):
+        """Create a command to set the OVS Bridge's external_ids
+
+        :param name:  The name of the bridge
+        :type name:   string
+        :param field: The external_ids field to set
+        :type field:  string
+        :param value: The external_ids value to set
+        :type value:  string
+        :returns:     :class:`Command` with field no result
+        """
+
+    @abc.abstractmethod
     def set_controller(self, bridge, controllers):
         """Create a command to set an OVS bridge's OpenFlow controllers
 
@@ -170,7 +183,7 @@ class API(api.API):
         :type port:       string
         :param may_exist: Do not fail if the port already exists
         :type may_exist:  bool
-        :returns:         :class:`Command` with no result
+        :returns:         :class:`Command` with RowView result
         """
 
     @abc.abstractmethod
@@ -202,4 +215,28 @@ class API(api.API):
         :param bridge: The name of the bridge
         :type bridge:  string
         :returns:      :class:`Command` with list of interfaces names result
+        """
+
+    @abc.abstractmethod
+    def iface_get_external_id(self, name, field):
+        """Create a command to return a field from the Interface's external_ids
+
+        :param name:  The name of the interface
+        :type name:   string
+        :param field: The external_ids field to return
+        :type field:  string
+        :returns:     :class:`Command` with field value result
+        """
+
+    @abc.abstractmethod
+    def iface_set_external_id(self, name, field, value):
+        """Create a command to set the OVS Interface's external_ids
+
+        :param name:  The name of the interface
+        :type name:   string
+        :param field: The external_ids field to set
+        :type field:  string
+        :param value: The external_ids value to set
+        :type value:  string
+        :returns:     :class:`Command` with field no result
         """
