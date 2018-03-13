@@ -104,9 +104,16 @@ class Transaction(api.Transaction):
                 # idl.run() again. So, call idl.run() here just in case.
                 self.api.idl.run()
                 continue
-            elif status == txn.ERROR:
+            elif status in (txn.ERROR, txn.NOT_LOCKED):
+                msg = 'OVSDB Error: '
                 #事务提交出现error
-                msg = "OVSDB Error: %s" % txn.get_error()
+                if status == txn.NOT_LOCKED:
+                    msg += ("The transaction failed because the IDL has "
+                            "been configured to require a database lock "
+                            "but didn't get it yet or has already lost it")
+                else:
+                    msg += txn.get_error()
+
                 if self.log_errors:
                     LOG.error(msg)
                 if self.check_error:
@@ -121,6 +128,8 @@ class Transaction(api.Transaction):
                 LOG.debug("Transaction caused no change")
             elif status == txn.SUCCESS:
                 self.post_commit(txn)
+            else:
+                LOG.debug("Transaction returned an unknown status: %s", status)
 
             #返回成功执行的commands
             return [cmd.result for cmd in self.commands]
